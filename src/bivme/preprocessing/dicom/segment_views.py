@@ -19,10 +19,10 @@ def init_nnUNetv2(model_folder, my_logger):
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
-        device = torch.device("cpu")  # nnUNetv2 does not support MPS, so we use CPU instead
-        my_logger.warning('MPS is available, but nnU-Net-v2 does not support it. Using CPU instead. This may be very slow!')
+        device = torch.device("mps")  # supported by nnunetv2>=2.8; ~3.5x faster than CPU on M4 Pro
     else:
         device = torch.device("cpu")
+    my_logger.info(f'nnU-Net device: {device}')
 
     predictor = nnUNetPredictor(tile_step_size=0.5,
         use_gaussian=True,
