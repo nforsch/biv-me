@@ -104,7 +104,9 @@ If importing the submodule does not work for any reason, you can fall back on do
 git clone https://github.com/UOA-Heart-Mechanics-Research/biv-me-dl-models.git
 ```
 
-Copy the contents of the cloned models repository to `src\bivme\preprocessing\dicom\models` within your biv-me repository. Again, check if .pth and .joblib files are stored there, and that they are larger than 1 KB. If not, you probably do not have Git LFS initialised. Make sure to install Git LFS and retry. 
+Copy the contents of the cloned models repository to `src\bivme\preprocessing\dicom\models` within your biv-me repository. Again, check if .pth and .joblib files are stored there, and that they are larger than 1 KB. If not, you probably do not have Git LFS initialised. Make sure to install Git LFS and retry.
+
+If the submodule installation does not work for any other reason (e.g. LFS quota restrictions), you can fall back to downloading the deep learning models via dropbox ([v1.2 download link here](https://www.dropbox.com/scl/fo/s17x4ebv4c7yy5k100apl/AAIRP130Hy24hLp65ZO0h4Y?rlkey=qk1oe9wqd4godov3nntjhc8vb&st=px8meq1i&dl=0)). After downloading, extract the models.zip folder and move the contents to src/bivme/preprocessing/dicom/models.  
 
 ### (Optional) Step 5: Install additional libraries (PyTorch and nnU-Net)
 This preprocessing code utilises PyTorch and nnU-Net. The default biv-me conda environment doesn't install either of these for you. To set these up, activate the biv-me conda environment by entering the following command into your terminal.
