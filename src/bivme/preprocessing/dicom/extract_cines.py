@@ -46,11 +46,8 @@ def extract_cines(src, dst, my_logger):
                 my_logger.warning(f'Could not read {file}. Might not be a DICOM file.')
                 continue
 
-            try:
-                description = dcm.SeriesDescription.lower()  # lower case for easier comparison
-            except:
-                my_logger.warning(f'Could not find series description tag for {file}. Excluded for now.')
-                continue
+            # Anonymised data may lack the tag: keep the file and let view selection (>=10 frames, classifier) decide
+            description = str(dcm.get('SeriesDescription', '')).lower()  # lower case for easier comparison
 
             # if description == '':
             #     my_logger.warning(f'Series description is empty for {file}. Excluded for now.')

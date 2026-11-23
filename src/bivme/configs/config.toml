@@ -262,3 +262,14 @@ overwrite = false
 output_directory = "../../demo/fitted-models/test-run"
 # Define where to save the fitted models and files
 # default: "../../demo/fitted-models/test-run"
+[batch]
+# Only used by batch runs: python -m bivme.batch -config configs/config.toml
+# The batch forces view-selection correct_mode = "automatic" (no GUI) and output_fitting overwrite = true.
+# The summary (biv-me_<batch_ID>.md table + .csv metrics, updated after every patient) goes to
+# output_fitting output_directory, or to the folder given with -summary <dir>.
+segmentation_confidence = true
+# Save nnU-Net softmax to compute per-slice segmentation confidence (files are deleted after use).
+view_confidence_min = 0.66
+# Flag series whose view-classification confidence is below this.
+segmentation_confidence_min = 0.85
+# Flag views where any slice's mean foreground softmax is below this.

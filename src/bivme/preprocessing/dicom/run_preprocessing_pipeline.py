@@ -63,7 +63,6 @@ def perform_preprocessing(case, config, mylogger):
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
-        mylogger.warning('MPS is available, but nnU-Net-v2 does not support it. It will use CPU instead, and this may be very slow!')
     else:
         device = torch.device("cpu")
         mylogger.warning('No GPU available. Using CPU instead. This may be very slow!')
@@ -98,8 +97,10 @@ def perform_preprocessing(case, config, mylogger):
 
     # # Step 2: Segmentation
     seg_start_time = time.time()
-    mylogger.info(f'Starting segmentation...')
-    segment_views(dst, MODEL_DIR, slice_info_df, config["multiprocessing"]["workers"], mylogger) # TODO: Find a way to suppress nnUnet output
+    seg_model = config.get("batch", {}).get("seg", "3d")
+    mylogger.info(f'Starting segmentation ({seg_model} nnU-Net)...')
+    segment_views(dst, MODEL_DIR, slice_info_df, config["multiprocessing"]["workers"], mylogger,
+                  save_confidence=config.get("batch", {}).get("segmentation_confidence", False), seg_model=seg_model) # TODO: Find a way to suppress nnUnet output
     seg_end_time = time.time()
     mylogger.success(f'Segmentation complete. Time taken: {seg_end_time-seg_start_time} seconds.')
 
