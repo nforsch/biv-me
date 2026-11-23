@@ -243,18 +243,18 @@ def run_batch(config, seg='3d', case_name=None, summary_dir=None):
     csv_path = summary_dir / f'biv-me_{batch_id}_{seg}.csv'
     md_path = summary_dir / f'biv-me_{batch_id}_{seg}.md'
 
-    # Resume: keep finished cases (OK/WARN), re-run failed ones
-    rows = pd.read_csv(csv_path, dtype={'patient': str}).to_dict('records') if csv_path.exists() else []
-    done = {r['patient'] for r in rows if r['status'] in ('OK', 'WARN')}
-    rows = [r for r in rows if r['patient'] in done]
+    # Resume: skip finished cases (OK/WARN), re-run failed ones. FAIL rows stay until their rerun replaces them,
+    # so a rerun cut short still lists every case attempted so far.
+    rows = {r['patient']: r for r in pd.read_csv(csv_path, dtype={'patient': str}).to_dict('records')} if csv_path.exists() else {}
+    done = {p for p, r in rows.items() if r['status'] in ('OK', 'WARN')}
     todo = [c for c in cases if c not in done]
     logger.info(f'{len(cases)} case(s), {len(done)} already done, {len(todo)} to run. Summary: {md_path}')
 
     for i, case in enumerate(todo):
         logger.info(f'=== Case {i + 1}/{len(todo)} ({seg}): {case}')
         row = run_case(case, config, cfg)
-        rows.append(row)
-        write_summary(rows, csv_path, md_path, f'biv-me batch {batch_id} ({seg.upper()} segmentation)')
+        rows[case] = row  # replaces an earlier FAIL row in place
+        write_summary(list(rows.values()), csv_path, md_path, f'biv-me batch {batch_id} ({seg.upper()} segmentation)')
         write_compare(summary_dir, batch_id)
         logger.info(f'{case}: {row["status"]} {row.get("notes", "")}')
 
