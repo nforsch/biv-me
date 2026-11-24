@@ -49,3 +49,19 @@ def test_compare_3d_vs_2d(tmp_path):
     md = (tmp_path / 'biv-me_b_compare.md').read_text()
     assert '| Patient | Status 3D | Status 2D |' in md and 'OK in both: 1' in md
     assert '| 007 | OK | OK | 1.1 |' in md and '| 12 | WARN |  | 2.0 |' in md  # leading zero kept, 2D pending
+
+
+def test_tightened_rules():
+    cfg = {**BATCH_DEFAULTS, 'ignore_missing': ['RVOT', 'PULMONARY_VALVE']}
+    base = {'view_series_n': 14, 'gp_frames': 30, 'fit_residual_mean': 1.8, 'crashed': False}
+    # missing RVOT/PV ignored; 0.43 view conf no longer flagged, 0.05 is
+    row = assess({**base, 'views_missing': 'RVOT', 'valves_missing': 'PULMONARY_VALVE', 'view_low_conf': 'SAX#23 0.43'}, cfg)
+    assert row['status'] == 'OK', row['notes']
+    row = assess({**base, 'view_low_conf': 'SAX#23 0.43, 4ch#18 0.05'}, cfg)
+    assert row['status'] == 'WARN' and row['notes'] == 'low view confidence (<0.3): 4ch#18 0.05'
+    assert assess({**base, 'views_missing': 'SAX RVOT'}, cfg)['notes'] == 'no SAX view'
+    # rows read back from a summary CSV: NaN means empty; crashed rows keep their exception note
+    loaded = {**base, 'views_missing': np.nan, 'seg_low_views': np.nan, 'status': 'WARN', 'notes': 'old'}
+    assert assess(loaded, cfg)['status'] == 'OK'
+    crashed = {'patient': '5', 'status': 'FAIL', 'crashed': np.True_, 'notes': 'RuntimeError: boom'}
+    assert assess(crashed, cfg)['notes'] == 'RuntimeError: boom'

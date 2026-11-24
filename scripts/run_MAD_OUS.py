@@ -45,6 +45,7 @@ def main():
     config['output_pp']['output_directory'] = str(args.out / 'guidepoints')
     config['output_fitting']['output_directory'] = str(args.out / 'fitted-models')
     config['view-selection']['option'] = 'default'  # first run classifies; the batch switches to 'load' once states exist
+    config.setdefault('batch', {})['ignore_missing'] = ['RVOT', 'PULMONARY_VALVE']  # MAD_OUS has no RVOT series
     if args.workers:
         config['multiprocessing']['workers'] = args.workers
 

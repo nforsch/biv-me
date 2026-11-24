@@ -269,7 +269,9 @@ output_directory = "../../demo/fitted-models/test-run"
 # output_fitting output_directory, or to the folder given with -summary <dir>.
 segmentation_confidence = true
 # Save nnU-Net softmax to compute per-slice segmentation confidence (files are deleted after use).
-view_confidence_min = 0.66
-# Flag series whose view-classification confidence is below this.
+view_confidence_min = 0.3
+# Flag series whose view-classification confidence is below this (0.66 flagged most cases; < 0.3 usually means a wrong view).
 segmentation_confidence_min = 0.85
 # Flag views where any slice's mean foreground softmax is below this.
+ignore_missing = []
+# Views/valves a dataset never has, so their absence is not a warning, e.g. ["RVOT", "PULMONARY_VALVE"]. Missing SAX is always a FAIL.

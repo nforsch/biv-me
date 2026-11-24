@@ -9,7 +9,7 @@ Usage (from src/bivme, like main.py):
 so both runs coexist; the states folder (view predictions) is shared, so whichever run goes second reuses the
 first run's view classification. biv-me_<batch_ID>_compare.md shows both runs' status side by side.
 """
-import os, sys, time, argparse, datetime
+import os, re, sys, time, argparse, datetime
 from pathlib import Path
 
 import numpy as np
@@ -22,8 +22,8 @@ from bivme.main import run_preprocessing, run_fitting, validate_config_preproces
 VIEWS = ['SAX', '2ch', '3ch', '4ch', 'RVOT']
 SEGS = ['3d', '2d']
 VALVES = ['MITRAL_VALVE', 'TRICUSPID_VALVE', 'AORTA_VALVE', 'PULMONARY_VALVE']
-BATCH_DEFAULTS = {'segmentation_confidence': True,
-                  'view_confidence_min': 0.66, 'segmentation_confidence_min': 0.85}
+BATCH_DEFAULTS = {'segmentation_confidence': True, 'view_confidence_min': 0.3,
+                  'segmentation_confidence_min': 0.85, 'ignore_missing': []}
 
 
 def _fresh(path, since):
@@ -78,24 +78,34 @@ def fitting_qc(residuals_path, factor):
 
 
 def assess(row, cfg):
-    """Fill status/notes from the QC columns. FAIL = no usable model; WARN = model exists but check it."""
-    if row.get('status') == 'FAIL':
+    """Fill status/notes from the QC columns. FAIL = no usable model; WARN = model exists but check it.
+    Also re-applies the current rules to rows loaded from an earlier summary (NaN = empty)."""
+    if row.get('crashed') == True:  # noqa: E712 (numpy bools from CSV); the exception message is the note
         return row
+    row = {k: v for k, v in row.items() if not (isinstance(v, float) and np.isnan(v))}
+    ignore = set(cfg['ignore_missing'])
+    views_missing = [v for v in row.get('views_missing', '').split() if v not in ignore]
+    valves_missing = [v for v in row.get('valves_missing', '').split() if v not in ignore]
+    # filtered here (not only in view_qc) so rows recorded with an older, looser threshold are re-judged
+    low_views = [m[0] for m in re.finditer(r'\S+#\S+ ([\d.]+)', row.get('view_low_conf', ''))
+                 if float(m[1]) < cfg['view_confidence_min']]
     fails, warns = [], []
     if not row.get('view_series_n'):
         fails.append('view selection failed')
+    if 'SAX' in views_missing:
+        fails.append('no SAX view')
     if not row.get('gp_frames'):
         fails.append('no guide points')
     if 'fit_residual_mean' not in row or pd.isna(row['fit_residual_mean']):
         fails.append('fitting failed')
-    if row.get('views_missing'):
-        warns.append(f'missing views: {row["views_missing"]}')
-    if row.get('view_low_conf'):
-        warns.append(f'low view confidence (<{cfg["view_confidence_min"]})')
+    if [v for v in views_missing if v != 'SAX']:
+        warns.append(f'missing views: {" ".join(v for v in views_missing if v != "SAX")}')
+    if low_views:
+        warns.append(f'low view confidence (<{cfg["view_confidence_min"]}): {", ".join(low_views)}')
     if row.get('seg_low_views'):
         warns.append(f'low segmentation confidence (<{cfg["segmentation_confidence_min"]}): {row["seg_low_views"]}')
-    if row.get('valves_missing'):
-        warns.append(f'missing valve points: {row["valves_missing"]}')
+    if valves_missing:
+        warns.append(f'missing valve points: {" ".join(valves_missing)}')
     if row.get('fit_frames_failed'):
         warns.append(f'{row["fit_frames_failed"]} frame(s) failed to fit')
     if row.get('fit_frames_high'):
@@ -107,7 +117,7 @@ def assess(row, cfg):
 
 def run_case(case, config, cfg):
     t0 = time.time()
-    row = {'patient': case, 'started': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+    row = {'patient': case, 'started': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), 'crashed': False}
     batch_id = config['input_pp']['batch_ID']
     states_csv = os.path.join(config['input_pp']['states'], batch_id, case, config['input_pp']['analyst_id'], 'view_predictions.csv')
     # Reuse view predictions from the other segmentation run, so both approaches segment the same views
@@ -138,7 +148,7 @@ def run_case(case, config, cfg):
     except Exception as e:  # one bad patient must not stop the batch
         _reset_logging()
         logger.exception(f'{case} failed')
-        row.update(status='FAIL', notes=f'{type(e).__name__}: {str(e).splitlines()[0] if str(e) else ""}')
+        row.update(status='FAIL', crashed=True, notes=f'{type(e).__name__}: {str(e).splitlines()[0] if str(e) else ""}')
     row['total_min'] = round((time.time() - t0) / 60, 1)
     return assess(row, cfg)
 
@@ -243,12 +253,17 @@ def run_batch(config, seg='3d', case_name=None, summary_dir=None):
     csv_path = summary_dir / f'biv-me_{batch_id}_{seg}.csv'
     md_path = summary_dir / f'biv-me_{batch_id}_{seg}.md'
 
-    # Resume: skip finished cases (OK/WARN), re-run failed ones. FAIL rows stay until their rerun replaces them,
+    # Resume: re-judge earlier rows with the current rules, then skip finished cases. Only crashed cases are
+    # re-run (rule FAILs like "no SAX view" would fail again). FAIL rows stay until their rerun replaces them,
     # so a rerun cut short still lists every case attempted so far.
-    rows = {r['patient']: r for r in pd.read_csv(csv_path, dtype={'patient': str}).to_dict('records')} if csv_path.exists() else {}
-    done = {p for p, r in rows.items() if r['status'] in ('OK', 'WARN')}
+    rows = {r['patient']: assess(r, cfg) for r in pd.read_csv(csv_path, dtype={'patient': str}).to_dict('records')} if csv_path.exists() else {}
+    # crashed is missing in summaries from before it existed: re-run those FAILs to be safe
+    done = {p for p, r in rows.items() if r['status'] != 'FAIL' or r.get('crashed') == False}  # noqa: E712
     todo = [c for c in cases if c not in done]
     logger.info(f'{len(cases)} case(s), {len(done)} already done, {len(todo)} to run. Summary: {md_path}')
+    if rows:
+        write_summary(list(rows.values()), csv_path, md_path, f'biv-me batch {batch_id} ({seg.upper()} segmentation)')
+        write_compare(summary_dir, batch_id)
 
     for i, case in enumerate(todo):
         logger.info(f'=== Case {i + 1}/{len(todo)} ({seg}): {case}')
